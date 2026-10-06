@@ -184,6 +184,13 @@
   .nr { padding:10px 12px; border-radius:12px; cursor:pointer; display:flex; justify-content:space-between; gap:10px; align-items:center; font-size:13px; transition:background .15s; }
   .nr:hover { background:var(--soft); } .nr b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .nr small { color:var(--muted); flex:none; }
   #nameRes { margin-top:6px; max-height:230px; overflow:auto; }
+  /* ---------- payer details ---------- */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  @media (max-width:480px) { .grid2 { grid-template-columns:1fr; } }
+  .sect { margin:20px 0 0; padding-top:14px; border-top:1.5px dashed var(--line); font-size:12px; font-weight:800; letter-spacing:.8px; text-transform:uppercase; color:var(--brand3); }
+  textarea { width:100%; min-height:72px; padding:13px 15px; font-size:16px; font-family:inherit; color:var(--text); background:#fff; border:1.5px solid var(--line); border-radius:12px; outline:none; resize:vertical; transition:.15s; }
+  textarea:focus { border-color:var(--brand); box-shadow:0 0 0 4px rgba(249,115,22,.15); }
+  .stat-top .coll { display:block; margin-top:6px; font-size:13px; font-weight:800; color:var(--brand3); }
 </style>
 </head>
 <body>
@@ -290,12 +297,22 @@ async function run(btn, fn) {
 const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
 const CROSS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
-function details(r) {
-  let h = `<dl><div><dt>Student No.</dt><dd>${esc(r.id)}</dd></div><div><dt>Program &amp; Section</dt><dd>${esc(r.section)}</dd></div>`;
-  if (r.paid && r.mode) h += `<div><dt>Payment mode</dt><dd>${esc(r.mode)}</dd></div>`;
-  if (r.paid && r.date) h += `<div><dt>Date paid</dt><dd>${esc(r.date)}</dd></div>`;
+function details(r, admin) {
+  const row = (k, v) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`;
+  let h = `<dl>` + row('Student No.', r.id) + row('Program &amp; Section', r.section);
+  if (r.paid && r.mode) h += row('Payment mode', r.mode);
+  if (r.paid && r.date) h += row('Date paid', r.date);
+  if (admin) {   // officer-only details (the public check never receives these)
+    if (r.paid && r.amount !== '' && r.amount != null) h += row('Amount', '\u20B1' + Number(r.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 }));
+    if (r.paid && r.ref) h += row('Receipt / ref no.', r.ref);
+    if (r.paid && r.by) h += row('Received by', r.by);
+    if (r.contact) h += row('Contact no.', r.contact);
+    if (r.email) h += row('Email', r.email);
+    if (r.notes) h += row('Notes', r.notes);
+  }
   return h + '</dl>';
 }
+
 function hero(r) {
   return `<div class="icon ${r.paid ? 'ok' : 'bad'}">${r.paid ? CHECK : CROSS}</div>
     <div class="status ${r.paid ? 'ok' : 'bad'}">${r.paid ? 'Paid' : 'Not yet paid'}</div>
@@ -325,10 +342,30 @@ $('loginBtn').onclick = () => run($('loginBtn'), async () => {
 });
 $('pw').onkeydown = e => { if (e.key === 'Enter') $('loginBtn').click(); };
 $('logout').onclick = () => { pw = ''; ss.del('pw'); $('aOut').innerHTML = ''; show('studentView'); };
-function openAdmin() { show('adminView'); $('aid').focus(); loadStats(); }
+let fee = '';
+async function openAdmin() {
+  show('adminView'); $('aid').focus(); loadStats();
+  try {
+    const r = await api({ action: 'login', password: pw });
+    if (r && r.ok) { modes = r.modes || modes; fee = r.fee === undefined ? '' : r.fee; }
+    else if (r && r.error === 'Wrong password.') { $('logout').click(); toast('Session expired. Log in again.'); }
+  } catch (e) {}
+}
 
 /* Admin: find / update / add */
 const modeSelect = id => `<select id="${id}">${modes.map(m => `<option>${esc(m)}</option>`).join('')}</select>`;
+const payFields = v => `<div class="grid2">
+  <div><label>Payment mode</label>${modeSelect('mode')}</div>
+  <div><label>Amount paid (&#8369;)</label><input id="dAmt" inputmode="decimal" autocomplete="off" value="${esc(v.amount !== undefined && v.amount !== '' && v.amount !== null ? v.amount : fee)}"></div>
+  <div><label>Receipt / reference no.</label><input id="dRef" maxlength="40" autocomplete="off" value="${esc(v.ref || '')}"></div>
+  <div><label>Received by</label><input id="dBy" maxlength="40" autocomplete="off" placeholder="Officer name" value="${esc(v.by || ss.get('by'))}"></div></div>`;
+const infoFields = v => `<div class="sect">Student details (optional)</div>
+  <div class="grid2">
+  <div><label>Contact no.</label><input id="dContact" inputmode="tel" maxlength="20" autocomplete="off" placeholder="09XX XXX XXXX" value="${esc(v.contact || '')}"></div>
+  <div><label>Email</label><input id="dEmail" type="email" maxlength="80" autocomplete="off" value="${esc(v.email || '')}"></div></div>
+  <label>Notes</label><textarea id="dNotes" maxlength="200" placeholder="e.g. paid for a classmate, partial, will follow">${esc(v.notes || '')}</textarea>`;
+const getDetails = () => { const g = id => $(id) ? $(id).value.trim() : ''; return { amount: g('dAmt'), ref: g('dRef'), by: g('dBy'), contact: g('dContact'), email: g('dEmail'), notes: g('dNotes') }; };
+
 $('findBtn').onclick = () => run($('findBtn'), async () => {
   setErr('aErr'); $('aOut').innerHTML = '';
   const r = await api({ action: 'find', id: $('aid').value, password: pw });
@@ -341,31 +378,35 @@ $('aid').onkeydown = e => { if (e.key === 'Enter') $('findBtn').click(); };
 
 function renderEdit(r) {
   $('aOut').innerHTML = `<div class="result">
-    <div class="name" style="margin-top:0">${esc(r.name)}</div>${details(r)}
+    <div class="name" style="margin-top:0">${esc(r.name)}</div>${details(r, true)}
     <div class="row"><strong id="pLabel">${r.paid ? 'Paid' : 'Not yet paid'}</strong>
       <label class="switch" style="margin:0"><input type="checkbox" id="paidChk" ${r.paid ? 'checked' : ''}><span class="slider"></span></label></div>
-    <div id="modeWrap" class="${r.paid ? 'hidden' : ''}" style="text-align:left"><label>Payment mode</label>${modeSelect('mode')}</div>
+    <div id="payWrap" style="text-align:left"><div class="sect">Payment</div>${payFields(r)}</div>
+    <div style="text-align:left">${infoFields(r)}</div>
     <button id="saveBtn">Save</button></div>`;
   if (r.mode && modes.includes(r.mode) && $('mode')) $('mode').value = r.mode;
-  $('paidChk').onchange = () => { $('pLabel').textContent = $('paidChk').checked ? 'Paid' : 'Not yet paid'; $('modeWrap').classList.toggle('hidden', !$('paidChk').checked); };
-  $('modeWrap').classList.toggle('hidden', !$('paidChk').checked);
+  const sync = () => { $('pLabel').textContent = $('paidChk').checked ? 'Paid' : 'Not yet paid'; $('payWrap').classList.toggle('hidden', !$('paidChk').checked); };
+  $('paidChk').onchange = sync; sync();
   $('saveBtn').onclick = () => run($('saveBtn'), async () => {
-    const res = await api({ action: 'setPaid', id: r.id, paid: $('paidChk').checked, mode: $('mode').value, password: pw });
-    if (!res.ok) return setErr('aErr', res.error);
-    toast('Saved to spreadsheet ✓'); renderEdit(res); if (res.paid) confetti(); loadStats();
+    const d = getDetails(); ss.set('by', d.by);
+    const res = await api({ action: 'setPaid', id: r.id, paid: $('paidChk').checked, mode: $('mode').value, details: d, password: pw });
+    if (!res.ok) { setErr('aErr', res.error); return toast(res.error); }
+    setErr('aErr'); toast('Saved to spreadsheet ✓'); renderEdit(res); if (res.paid) confetti(); loadStats();
   });
 }
 
 function renderAdd(id) {
   $('aOut').innerHTML = `<div class="result" style="text-align:left">
     <div class="err" style="margin:0 0 8px">Not in the list yet. Add and mark as paid:</div>
-    <label>Full name (LAST, FIRST M.)</label><input id="nName">
-    <label>Program &amp; section (e.g. BSCS 2-6)</label><input id="nSec">
-    <label>Payment mode</label>${modeSelect('nMode')}
+    <label>Full name (LAST, FIRST M.)</label><input id="nName" autocomplete="off">
+    <label>Program &amp; section (e.g. BSCS 2-6)</label><input id="nSec" autocomplete="off">
+    <div class="sect">Payment</div>${payFields({})}
+    ${infoFields({})}
     <button id="addBtn">Add &amp; mark paid</button></div>`;
   $('addBtn').onclick = () => run($('addBtn'), async () => {
-    const res = await api({ action: 'add', id, name: $('nName').value, section: $('nSec').value, mode: $('nMode').value, password: pw });
-    if (!res.ok) return setErr('aErr', res.error);
+    const d = getDetails(); ss.set('by', d.by);
+    const res = await api({ action: 'add', id, name: $('nName').value, section: $('nSec').value, mode: $('mode').value, details: d, password: pw });
+    if (!res.ok) { setErr('aErr', res.error); return toast(res.error); }
     setErr('aErr'); toast('Added to spreadsheet ✓'); renderEdit(res); confetti(); loadStats();
   });
 }
@@ -409,7 +450,8 @@ async function loadStats() {
   if (!r || !r.ok) { el.innerHTML = ''; return; }
   const total = r.paid || 1, modesH = Object.entries(r.modes).sort((a, b) => b[1] - a[1])
     .map(([m, n]) => `<div class="mb"><em>${esc(m)}</em><i><u style="width:${Math.round(n / total * 100)}%"></u></i><strong>${n}</strong></div>`).join('');
-  el.innerHTML = `<div class="stat-top"><div><b id="cnt">0</b><span>members paid</span></div><div class="mbars">${modesH}</div></div>` +
+  const coll = r.collected ? `<span class="coll">&#8369;${Number(r.collected).toLocaleString('en-PH', { minimumFractionDigits: 2 })} collected</span>` : '';
+  el.innerHTML = `<div class="stat-top"><div><b id="cnt">0</b><span>members paid</span>${coll}</div><div class="mbars">${modesH}</div></div>` +
     (r.recent.length ? `<div class="latest"><h4>Latest payments</h4>${r.recent.map(x => `<div class="lp"><span>${esc(x.name)}</span><small>${esc(x.date)}</small></div>`).join('')}</div>` : '');
   countUp($('cnt'), r.paid);
 }
