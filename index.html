@@ -486,7 +486,7 @@ function saveSlip(r) {
   });
   x.textAlign = 'center'; x.fillStyle = '#8a7565'; x.font = `500 20px ${F}`;
   x.fillText('CEIT Student Council  •  Cavite State University', W / 2, H - 150);
-  x.font = `500 17px ${F}`; x.fillText('Status check only. Not an official receipt.', W / 2, H - 118);
+  x.font = `500 17px ${F}`; x.fillText('This is the official receipt of CEIT-SC.', W / 2, H - 118);
   const a = document.createElement('a'); a.download = `status-slip-${r.id}.png`; a.href = c.toDataURL('image/png'); a.click();
   toast('Status slip saved ✓');
 }
