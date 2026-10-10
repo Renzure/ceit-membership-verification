@@ -607,7 +607,8 @@ $('pubName').addEventListener('input', () => {
     $('pubRes').innerHTML = '<div class="hint">Searching\u2026</div>';
     let r; try { r = await api({ action: 'search', q }); } catch (e) { if (seq === pubSeq) $('pubRes').innerHTML = '<div class="hint">Connection problem. Try again.</div>'; return; }
     if (seq !== pubSeq) return; // a newer search is already running
-    if (!r || !r.ok) { $('pubRes').innerHTML = `<div class="hint">${esc((r && r.error) || 'Search is unavailable right now.')}</div>`; return; }
+    if (!r || !r.ok) { const em = (r && r.error) || 'Search is unavailable right now.';
+      $('pubRes').innerHTML = `<div class="hint">${esc(/password/i.test(em) ? 'Name search is not enabled on the server yet (the API_URL still points to the old script). Please use your student number for now.' : em)}</div>`; return; }
     $('pubRes').innerHTML = r.results.length
       ? r.results.map(x => `<div class="nr" data-id="${esc(x.id)}"><b>${esc(x.name)}</b><small>${esc(x.section)}</small></div>`).join('')
       : '<div class="hint">No match found. Try your last name only, or use your student number.</div>';
